@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Fixed income tools (Fixed Income Analysis for the CFA Program)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#f8f9fb; --card:#ffffff; --border:#e5e7eb; --text:#111827; --muted:#6b7280; --accent:#2563eb; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; background: var(--bg); color: var(--text); }
+    h1 { margin: 0 0 8px; }
+    .muted { color: var(--muted); font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 260px 1fr; gap: 24px; }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .sidebar .tool { display: block; padding: 10px 12px; margin-bottom: 8px; border-radius: 8px; border: 1px solid var(--border); text-decoration: none; color: var(--text); background:#fff; }
+    .sidebar .tool.active { border-color: var(--accent); background: #eef2ff; }
+    .row { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; margin: 12px 0; }
+    label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+    input, select, button, textarea { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; }
+    textarea { min-height: 80px; }
+    button { background: var(--accent); color: #fff; border: none; cursor: pointer; }
+    button.secondary { background: #374151; }
+    .out { background: #fafafa; border-radius: 8px; padding: 8px; font-family: ui-monospace, Menlo, Consolas, monospace; overflow:auto; white-space:pre-wrap; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .section-title { margin: 12px 0 6px; font-weight: 700; }
+    .small { font-size: 12px; color: var(--muted); }
+    .warn { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Fixed income tools</h1>
+  <div class="muted">Inspired by “Fixed Income Analysis for the CFA Program”: calculators for bond pricing/YTM, yield measures, duration & convexity, bootstrapping, forwards, spreads, swaps, immunization, and callable/OAS.</div>
+
+  <div class="grid">
+    <div class="panel sidebar">
+      <a class="tool active" href="#" data-tool="bondprice">Bond price & YTM</a>
+      <a class="tool" href="#" data-tool="yieldmeasures">Yield measures (BEY, EAY, money-market)</a>
+      <a class="tool" href="#" data-tool="durationconvexity">Duration & convexity</a>
+      <a class="tool" href="#" data-tool="bootstrapping">Zero-curve bootstrapping</a>
+      <a class="tool" href="#" data-tool="forwardrates">Forward rates from spot</a>
+      <a class="tool" href="#" data-tool="spreads">Spreads (G-spread, I-spread, Z/OAS)</a>
+      <a class="tool" href="#" data-tool="swapfixedincome">Interest rate swap PV/Par rate</a>
+      <a class="tool" href="#" data-tool="immunization">Immunization check (cash-flow matching)</a>
+      <a class="tool" href="#" data-tool="callableoas">Callable bond via binomial & OAS</a>
+    </div>
+
+    <div class="panel" id="content">
+
+      <!-- Bond price & YTM -->
+      <div class="toolview" id="bondprice">
+        <h2>Bond price & YTM</h2>
+        <div class="row">
+          <div><label>Face value (par)</label><input id="bp_par" type="number" value="1000"></div>
+          <div><label>Coupon rate (annual, dec.)</label><input id="bp_coupon" type="number" step="0.0000001" value="0.05"></div>
+          <div><label>Payments per year</label><input id="bp_m" type="number" value="2"></div>
+          <div><label>Years to maturity</label><input id="bp_T" type="number" step="0.0001" value="5"></div>
+          <div><label>Yield to maturity (dec., BEY)</label><input id="bp_y" type="number" step="0.0000001" value="0.06"></div>
+          <div><label>Price (enter to solve YTM)</label><input id="bp_price" type="number" placeholder="leave blank to compute from y"></div>
+        </div>
+        <div class="grid2">
+          <button id="bp_calc">Compute</button>
+          <button class="secondary" id="bp_clear">Clear</button>
+        </div>
+        <div class="section-title">Results</div>
+        <div class="out" id="bp_out"></div>
+        <div class="small">If price is blank, computes price from BEY; if price is provided, solves YTM via Newton–Raphson with bisection fallback.</div>
+      </div>
+
+      <!-- Yield measures -->
+      <div class="toolview" id="yieldmeasures" style="display:none;">
+        <h2>Yield measures (BEY, EAY, money-market)</h2>
+        <div class="row">
+          <div><label>Bond equivalent yield (BEY)</label><input id="ym_bey" type="number" step="0.0000001" value="0.06"></div>
+          <div><label>Compounding periods per year</label><input id="ym_m" type="number" value="2"></div>
+          <div><label>Money‑market yield (simple)</label><input id="ym_mmy" type="number" step="0.0000001" value="0.058"></div>
+        </div>
+        <div class="grid2">
+          <button id="ym_calc">Convert</button>
+          <button class="secondary" id="ym_clear">Clear</button>
+        </div>
+        <div class="section-title">Results</div>
+        <div class="out" id="ym_out"></div>
+        <div class="small">EAY ≈ (1 + BEY/m)^{m} − 1. MMY is simple interest on 360-day basis; not directly comparable but shown.</div>
+      </div>
+
+      <!-- Duration & convexity -->
+      <div class="toolview" id="durationconvexity" style="display:none;">
+        <h2>Duration & convexity</h2>
+        <div class="row">
+          <div><label>Par</label><input id="dc_par" type="number" value="1000"></div>
+          <div><label>Coupon rate (dec.)</label><input id="dc_c" type="number" step="0.0000001" value="0.05"></div>
+          <div><label>Yield (dec., BEY)</label><input id="dc_y" type="number" step="0.0000001" value="0.06"></div>
+          <div><label>Payments per year</label><input id="dc_m" type="number" value="2"></div>
+          <div><label>Years to maturity</label><input id="dc_T" type="number" step="0.0001" value="5"></div>
+        </div>
+        <div class="grid2">
+          <button id="dc_calc">Compute duration/convexity</button>
+          <button class="secondary" id="dc_clear">Clear</button>
+        </div>
+        <div class="section-title">Results</div>
+        <div class="out" id="dc_out"></div>
+        <div class="small">Macaulay duration, modified duration, and convexity via cash‑flow weights; ΔP/P ≈ −D_mod·Δy + 0.5·Convexity·(Δy)^2.</div>
+      </div>
+
+      <!-- Bootstrapping -->
+      <div class="toolview" id="bootstrapping" style="display:none;">
+        <h2>Zero-curve bootstrapping</h2>
+        <div class="row">
+          <div><label>Deposit rate 6m (dec.)</label><input id="bs_r06" type="number" step="0.0000001" value="0.03"></div>
+          <div><label>Deposit rate 1y (dec.)</label><input id="bs_r1" type="number" step="0.0000001" value="0.032"></div>
+          <div><label>Coupon bond 2y price</label><input id="bs_p2" type="number" value="101.5"></div>
+          <div><label>Coupon bond 2y coupon (annual %)</label><input id="bs_c2" type="number" value="5"></div>
+          <div><label>Coupon bond 3y price</label><input id="bs_p3" type="number" value="102.0"></div>
+          <div><label>Coupon bond 3y coupon (annual %)</label><input id="bs_c3" type="number" value="5"></div>
+        </div>
+        <div class="grid2">
+          <button id="bs_calc">Bootstrap</button>
+          <button class="secondary" id="bs_clear">Clear</button>
+        </div>
+        <div class="section-title">Zero rates</div>
+        <div class="out" id="bs_out"></div>
+        <div class="small">Illustrative bootstrapping with semiannual compounding: infer z(0.5), z(1), then solve z(2), z(3) from coupon bond prices.</div>
+      </div>
+
+      <!-- Forward rates -->
+      <div class="toolview" id="forwardrates" style="display:none;">
+        <h2>Forward rates from spot</h2>
+        <div class="row">
+          <div><label>Spot 1y (dec.)</label><input id="fr_s1" type="number" step="0.0000001" value="0.03"></div>
+          <div><label>Spot 2y (dec.)</label><input id="fr_s2" type="number" step="0.0000001" value="0.032"></div>
+          <div><label>Spot 3y (dec.)</label><input id="fr_s3" type="number" step="0.0000001" value="0.034"></div>
+        </div>
+        <div class="grid2">
+          <button id="fr_calc">Compute forwards</button>
+          <button class="secondary" id="fr_clear">Clear</button>
+        </div>
+        <div class="section-title">Results</div>
+        <div class="out" id="fr_out"></div>
+        <div class="small">Annual compounding: f_{1,2} ≈ [(1+s_2)^2 / (1+s_1)] − 1; f_{2,3} ≈ [(1+s_3)^3 / (1+s_2)^2] − 1.</div>
+      </div>
+
+      <!-- Spreads -->
+      <div class="toolview" id="spreads" style="display:none;">
+        <h2>Spreads (G-spread, I-spread, Z/OAS)</h2>
+        <div class="row">
+          <div><label>Corporate YTM (dec.)</label><input id="sp_corpy" type="number" step="0.0000001" value="0.045"></div>
+          <div><label>Gov’t benchmark YTM (same tenor)</label><input id="sp_govy" type="number" step="0.0000001" value="0.037"></div>
+          <div><label>Par</label><input id="sp_par" type="number" value="100"></div>
+          <div><label>Coupon (% annual)</label><input id="sp_coupon" type="number" value="4"></div>
+          <div><label>Years to maturity</label><input id="sp_T" type="number" value="5"></div>
+          <div><label>Payments per year</label><input id="sp_m" type="number" value="2"></div>
+          <div><label>Zero curve (gov, csv: t,spot)</label><textarea id="sp_zero">0.5,0.03
+1.0,0.031
+1.5,0.032
+2.0,0.033
+2.5,0.034
+3.0,0.035
+3.5,0.036
+4.0,0.0365
+4.5,0.037
+5.0,0.0375</textarea></div>
+        </div>
+        <div class="grid2">
+          <button id="sp_calc">Compute spreads</button>
+          <button class="secondary" id="sp_clear">Clear</button>
+        </div>
+        <div class="section-title">Results</div>
+        <div class="out" id="sp_out"></div>
+        <div class="small">G-spread = corporate YTM − gov YTM; I-spread uses swap curve; Z-spread: constant add-on to zero curve s.t. PV(price)=market price; OAS adjusts Z-spread for embedded options.</div>
+      </div>
+
+      <!-- Interest rate swap -->
+      <div class="toolview" id="swapfixedincome" style="display:none;">
+        <h2>Interest rate swap PV/Par rate</h2>
+        <div class="row">
+          <div><label>Notional N</label><input id="sw_N" type="number" value="10_000_000"></div>
+          <div><label>Fixed rate R_fixed (annual, dec.)</label><input id="sw_fixed" type="number" step="0.0000001" value="0.03"></div>
+          <div><label>Payments per year m</label><input id="sw_m" type="number" value="2"></div>
+          <div><label>Tenor years</label><input id="sw_T" type="number" value="3"></div>
+          <div><label>Zero curve (csv: t,spot)</label><textarea id="sw_zero">0.5,0.03
+1.0,0.031
+1.5,0.032
+2.0,0.033
+2.5,0.034
+3.0,0.035</textarea></div>
+        </div>
+        <div class="grid2">
+          <button id="sw_calc">Value swap</button>
+          <button class="secondary" id="sw_clear">Clear</button>
+        </div>
+        <div class="section-title">Results</div>
+        <div class="out" id="sw_out"></div>
+        <div class="small">Fixed leg PV = N·Σ(R_fixed/m·DF_i) + N·DF_T; Float leg PV ≈ N at reset. Par fixed rate R* solves PV_fixed = PV_float.</div>
+      </div>
+
+      <!-- Immunization -->
+      <div class="toolview" id="immunization" style="display:none;">
+        <h2>Immunization check</h2>
+        <div class="row">
+          <div><label>Portfolio CFs (csv: t,amount)</label><textarea id="im_cf">0.5,300
+1.0,300
+1.5,300
+2.0,300
+2.5,300
+3.0,10_300</textarea></div>
+          <div><label>Zero curve (csv: t,spot)</label><textarea id="im_zero">0.5,0.03
+1.0,0.031
+1.5,0.032
+2.0,0.033
+2.5,0.034
+3.0,0.035</textarea></div>
+          <div><label>Liability (horizon) t*</label><input id="im_h" type="number" value="3.0"></div>
+          <div><label>Discount shift Δy (bps)</label><input id="im_dy" type="number" value="50"></div>
+        </div>
+        <div class="grid2">
+          <button id="im_calc">Check immunization</button>
+          <button class="secondary" id="im_clear">Clear</button>
+        </div>
+        <div class="section-title">Results</div>
+        <div class="out" id="im_out"></div>
+        <div class="small">Checks duration match and convexity cushion. Reports PV, Macaulay duration, and estimated ΔPV under parallel shift.</div>
+      </div>
+
+      <!-- Callable bond & OAS -->
+      <div class="toolview" id="callableoas" style="display:none;">
+        <h2>Callable bond via binomial & OAS</h2>
+        <div class="row">
+          <div><label>Par</label><input id="co_par" type="number" value="100"></div>
+          <div><label>Coupon (annual %)</label><input id="co_c" type="number" value="5"></div>
+          <div><label>Payments per year</label><input id="co_m" type="number" value="2"></div>
+          <div><label>Years to maturity</label><input id="co_T" type="number" value="3"></div>
+          <div><label>Tree up factor u</label><input id="co_u" type="number" step="0.0001" value="1.1"></div>
+          <div><label>Tree down factor d</label><input id="co_d" type="number" step="0.0001" value="0.9"></div>
+          <div><label>Short rate per step r (dec.)</label><input id="co_r" type="number" step="0.0000001" value="0.02"></div>
+          <div><label>OAS (dec. add-on)</label><input id="co_oas" type="number" step="0.0000001" value="0.00"></div>
+          <div><label>Callable from year</label><input id="co_callFrom" type="number" value="1"></div>
+          <div><label>Call price</label><input id="co_callPrice" type="number" value="100"></div>
+        </div>
+        <div class="grid2">
+          <button id="co_calc">Price callable</button>
+          <button class="secondary" id="co_clear">Clear</button>
+        </div>
+        <div class="section-title">Results</div>
+        <div class="out" id="co_out"></div>
+        <div class="small">Short‑rate binomial (lattice) with option exercise at call dates; OAS shifts the discount rates. Simplified for illustration.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // UI navigation
+    const links = document.querySelectorAll('.sidebar .tool');
+    const views = document.querySelectorAll('.toolview');
+    links.forEach(l => {
+      l.addEventListener('click', (e) => {
+        e.preventDefault();
+        links.forEach(x => x.classList.remove('active'));
+        l.classList.add('active');
+        const id = l.dataset.tool;
+        views.forEach(v => v.style.display = (v.id === id ? '' : 'none'));
+      });
+    });
+
+    // Helpers
+    const exp = Math.exp;
+    const ln = Math.log;
+    const pow = Math.pow;
+
+    function parseCSV(text) {
+      return text.trim().split(/\r?\n/).map(line => {
+        const [t,a] = line.split(',').map(s => s.trim());
+        return [Number(t), Number(String(a).replace(/_/g,''))];
+      }).filter(([t,a]) => Number.isFinite(t) && Number.isFinite(a));
+    }
+    function DF_fromSpot(t, s, m=1) {
+      // Continuous approx: DF = e^{−s * t}. For BEY/m compounding, DF=(1+s/m)^{−m t}
+      return exp(-s * t);
+    }
+
+    // Bond price & YTM
+    document.getElementById('bp_calc').addEventListener('click', () => {
+      const par=+bp_par.value, c=+bp_coupon.value, m=+bp_m.value, T=+bp_T.value, y=+bp_y.value;
+      const priceInput=bp_price.value.trim();
+      const out=document.getElementById('bp_out');
+      const reasons=[];
+      if (par<=0||c<0||m<=0||T<=0) reasons.push('Par>0, m>0, T>0 required.');
+      if (reasons.length){ out.innerHTML='<span class="warn">'+reasons.join(' ')+'</span>'; return; }
+      const n = Math.round(m*T);
+      const cpmt = par * c / m;
+
+      function priceFromY(yieldDec){
+        const r = yieldDec / m;
+        let pv=0;
+        for(let i=1;i<=n;i++){
+          const df = 1 / Math.pow(1+r, i);
+          pv += cpmt * df;
+        }
+        pv += par * 1 / Math.pow(1+r, n);
+        return pv;
+      }
+
+      if (priceInput === '') {
+        const p = priceFromY(y);
+        const beq = y;
+        const eay = Math.pow(1 + beq/m, m) - 1;
+        out.textContent = `Price=${p.toFixed(4)}; BEY=${beq.toFixed(6)}; EAY≈${eay.toFixed(6)}`;
+      } else {
+        const targetP = +priceInput;
+        if (!(targetP>0)) { out.innerHTML='<span class="warn">Enter a positive price to solve YTM.</span>'; return; }
+        // Newton-Raphson on yield
+        let yGuess = 0.05, ok=false;
+        for(let it=0; it<30; it++){
+          const p = priceFromY(yGuess);
+          const fp = p - targetP;
+          // numerical derivative wrt y
+          const dy=1e-6;
+          const p2 = priceFromY(yGuess+dy);
+          const fprime = (p2 - p) / dy;
+          if (Math.abs(fp) < 1e-6){ ok=true; break; }
+          if (Math.abs(fprime) < 1e-10){ break; }
+          yGuess = yGuess - fp / fprime;
+          if (yGuess < 0 || yGuess > 1) break;
+        }
+        if (!ok || yGuess<0 || yGuess>1){
+          // bisection on [0,100%]
+          let lo=0, hi=1, mid;
+          for(let i=0;i<50;i++){
+            mid=(lo+hi)/2;
+            const fmid=priceFromY(mid) - targetP;
+            if (Math.abs(fmid) < 1e-6){ yGuess=mid; ok=true; break; }
+            const flo=priceFromY(lo) - targetP;
+            if (Math.sign(fmid) === Math.sign(flo)) lo=mid; else hi=mid;
+          }
+        }
+        if (!ok){ out.innerHTML='<span class="warn">Could not solve YTM. Check inputs.</span>'; return; }
+        const eay = Math.pow(1 + yGuess/m, m) - 1;
+        out.textContent = `Solved BEY≈${yGuess.toFixed(8)}; EAY≈${eay.toFixed(8)}`;
+      }
+    });
+    document.getElementById('bp_clear').addEventListener('click', ()=>{ bp_out.textContent=''; });
+
+    // Yield measures
+    document.getElementById('ym_calc').addEventListener('click', () => {
+      const bey=+ym_bey.value, m=+ym_m.value, mmy=+ym_mmy.value;
+      const out=document.getElementById('ym_out');
+      if (m<=0){ out.innerHTML='<span class="warn">Compounding periods must be positive.</span>'; return; }
+      const eay = Math.pow(1 + bey/m, m) - 1;
+      const discEAY = Math.exp(Math.log(1+bey/m) * m) - 1; // same as eay but emphasizes effective
+      out.textContent = `EAY≈${eay.toFixed(8)}; Money-market (simple) provided=${mmy.toFixed(8)} (not directly comparable).`;
+    });
+    document.getElementById('ym_clear').addEventListener('click', ()=>{ ym_out.textContent=''; });
+
+    // Duration & convexity
+    document.getElementById('dc_calc').addEventListener('click', () => {
+      const par=+dc_par.value, c=+dc_c.value, y=+dc_y.value, m=+dc_m.value, T=+dc_T.value;
+      const out=document.getElementById('dc_out');
+      if (par<=0||m<=0||T<=0){ out.innerHTML='<span class="warn">Par>0, m>0, T>0 required.</span>'; return; }
+      const n=Math.round(m*T);
+      const r = y/m;
+      const cpmt = par*c/m;
+      let price=0, wtdTime=0, conv=0;
+      for(let i=1;i<=n;i++){
+        const t = i/m;
+        const df = 1/Math.pow(1+r,i);
+        const cf = (i<n) ? cpmt : (cpmt + par);
+        price += cf*df;
+        wtdTime += t * cf * df;
+        conv += cf * df * (i*(i+1)) / Math.pow(1+r,2); // approximate discrete convexity
+      }
+      const macaulay = wtdTime / price;
+      const mod = macaulay / (1 + y/m);
+      // More standard convexity (per period): sum CF * t*(t+1)/ (1+r)^{t+2} / price (in periods). Convert to annual.
+      let discConv=0;
+      for(let i=1;i<=n;i++){
+        const tPer=i; // periods
+        const cf = (i<n) ? cpmt : (cpmt + par);
+        discConv += cf * tPer*(tPer+1) / Math.pow(1+r, tPer+2);
+      }
+      const convPer = discConv / price;
+      const convAnnual = convPer / (m*m);
+      out.textContent=`Price=${price.toFixed(4)}
+Macaulay duration=${macaulay.toFixed(6)} years
+Modified duration=${mod.toFixed(6)}
+Convexity (annual)≈${convAnnual.toFixed(8)}
+Price change approx: ΔP/P ≈ −D_mod·Δy + 0.5·Convexity·(Δy)^2`;
+    });
+    document.getElementById('dc_clear').addEventListener('click', ()=>{ dc_out.textContent=''; });
+
+    // Bootstrapping
+    document.getElementById('bs_calc').addEventListener('click', () => {
+      const r06=+bs_r06.value, r1=+bs_r1.value, p2=+bs_p2.value, c2=+bs_c2.value, p3=+bs_p3.value, c3=+bs_c3.value;
+      const out=document.getElementById('bs_out');
+      const par=100;
+      const m=2;
+      // z(0.5), z(1)
+      const z05 = r06; // use simple proxy for semiannual
+      const z1 = r1;
+      // Solve z(2) given price p2
+      const coup2 = par * (c2/100)/m;
+      // DF0.5, DF1
+      const DF05 = exp(-z05*0.5);
+      const DF1 = exp(-z1*1.0);
+      // Price equation: p2 = coup2*(DF0.5 + DF1 + DF1.5 + DF2) + par*DF2
+      // Assume flat between 1 and 2 using unknown z2 for DF1.5 and DF2
+      // Simplify by solving DF2, then interpolate for DF1.5 (rough)
+      // p2 ≈ coup2*(DF05 + DF1 + DF15 + DF2) + par*DF2
+      // Let DF15 ≈ sqrt(DF1*DF2)
+      let DF2_guess = 0.9;
+      let ok=false;
+      for(let k=0;k<50;k++){
+        const DF15 = Math.sqrt(DF1*DF2_guess);
+        const price = coup2*(DF05 + DF1 + DF15 + DF2_guess) + par*DF2_guess;
+        const f = price - p2;
+        if (Math.abs(f) < 1e-6){ ok=true; break; }
+        // derivative ~ w.r.t DF2: coup2*(dDF15/dDF2 + 1) + par; dDF15/dDF2 = (1/2)*sqrt(DF1/DF2)
+        const dDF15 = 0.5*Math.sqrt(DF1/DF2_guess);
+        const fprime = coup2*(dDF15 + 1) + par;
+        DF2_guess = DF2_guess - f/fprime;
+        if (DF2_guess<=0 || DF2_guess>=1){ DF2_guess = Math.min(Math.max(DF2_guess, 0.0001), 0.9999); }
+      }
+      const z2 = -Math.log(DF2_guess)/2.0;
+      // Solve z(3) similarly using p3 and coupon c3
+      const coup3 = par * (c3/100)/m;
+      const DF25 = Math.sqrt(DF2_guess*exp(-z2*2.5)); // rough extrapolation
+      let DF3_guess = 0.85;
+      for(let k=0;k<60;k++){
+        const DF15 = Math.sqrt(DF1*DF2_guess);
+        const DF25r = Math.sqrt(DF2_guess*DF3_guess);
+        const price = coup3*(DF05 + DF1 + DF15 + DF2_guess + DF25r + DF3_guess) + par*DF3_guess;
+        const f = price - p3;
+        const dDF25 = 0.5*Math.sqrt(DF2_guess/DF3_guess);
+        const fprime = coup3*(dDF25 + 1) + par;
+        DF3_guess = Math.min(Math.max(DF3_guess - f/fprime, 0.0001), 0.9999);
+        if (Math.abs(f) < 1e-6) break;
+      }
+      const z3 = -Math.log(DF3_guess)/3.0;
+
+      out.textContent = `Zero rates (semiannual proxy):
+z(0.5y)≈${z05.toFixed(6)}
+z(1.0y)≈${z1.toFixed(6)}
+z(2.0y)≈${z2.toFixed(6)}
+z(3.0y)≈${z3.toFixed(6)}`;
+    });
+    document.getElementById('bs_clear').addEventListener('click', ()=>{ bs_out.textContent=''; });
+
+    // Forward rates
+    document.getElementById('fr_calc').addEventListener('click', () => {
+      const s1=+fr_s1.value, s2=+fr_s2.value, s3=+fr_s3.value;
+      const out=document.getElementById('fr_out');
+      const f12 = ( (1+s2)**2 / (1+s1) ) - 1;
+      const f23 = ( (1+s3)**3 / (1+s2)**2 ) - 1;
+      out.textContent=`f_{1,2}≈${f12.toFixed(6)}; f_{2,3}≈${f23.toFixed(6)}`;
+    });
+    document.getElementById('fr_clear').addEventListener('click', ()=>{ fr_out.textContent=''; });
+
+    // Spreads (Z-spread numeric)
+    document.getElementById('sp_calc').addEventListener('click', () => {
+      const corpY=+sp_corpy.value, govY=+sp_govy.value, par=+sp_par.value, cPct=+sp_coupon.value, T=+sp_T.value, m=+sp_m.value;
+      const zeroCSV=sp_zero.value;
+      const out=document.getElementById('sp_out');
+      const reasons=[];
+      if (par<=0||m<=0||T<=0){ reasons.push('Par>0, m>0, T>0 required.'); }
+      const zero = parseCSV(zeroCSV);
+      if (!zero.length) reasons.push('Provide zero curve points.');
+      if (reasons.length){ out.innerHTML='<span class="warn">'+reasons.join(' ')+'</span>'; return; }
+
+      const Gspread = corpY - govY;
+
+      // Build schedule times
+      const n=Math.round(m*T);
+      const cpmt = par*(cPct/100)/m;
+      const times = Array.from({length:n}, (_,i)=> (i+1)/m);
+
+      function spotAt(t){
+        // linear interp
+        for(let i=0;i<zero.length-1;i++){
+          const [t1,s1]=zero[i], [t2,s2]=zero[i+1];
+          if (t>=t1 && t<=t2){
+            const w=(t-t1)/(t2-t1);
+            return s1 + w*(s2-s1);
+          }
+        }
+        // extrapolate last
+        return zero[zero.length-1][1];
+      }
+      function pvWithAddOn(add){
+        let pv=0;
+        for(let i=0;i<n;i++){
+          const t=times[i];
+          const s=spotAt(t)+add;
+          const df = exp(-s*t);
+          const cf = (i<n-1)? cpmt : (cpmt+par);
+          pv += cf*df;
+        }
+        return pv;
+      }
+      // Solve Z-spread add-on so that PV ≈ price at par (assume price=par for illustration unless YTM provided implies price)
+      // Use price implied by corporate YTM (BEY)
+      function priceFromY(yieldDec){
+        const r = yieldDec / m;
+        let pv=0;
+        for(let i=1;i<=n;i++){
+          const df = 1 / Math.pow(1+r, i);
+          const cf = (i<n) ? cpmt : (cpmt+par);
+          pv += cf*df;
+        }
+        return pv;
+      }
+      const priceMarket = priceFromY(corpY);
+
+      let add=0.001, ok=false;
+      for(let it=0; it<40; it++){
+        const f = pvWithAddOn(add) - priceMarket;
+        if (Math.abs(f) < 1e-6){ ok=true; break; }
+        // derivative approx
+        const da=1e-6;
+        const f2 = pvWithAddOn(add+da) - priceMarket;
+        const fp = (f2 - f) / da;
+        if (Math.abs(fp) < 1e-10) break;
+        add = add - f/fp;
+      }
+      const Zspread = ok ? add : NaN;
+
+      out.textContent = `G-spread≈${Gspread.toFixed(6)}
+Z-spread (to gov zeros)≈${(isFinite(Zspread)? Zspread.toFixed(8) : 'N/A')}
+Note: I-spread requires swap curve; OAS requires option-adjusted lattice.`;
+    });
+    document.getElementById('sp_clear').addEventListener('click', ()=>{ sp_out.textContent=''; });
+
+    // Interest rate swap PV/Par rate (using zero curve)
+    document.getElementById('sw_calc').addEventListener('click', () => {
+      const N=+sw_N.value, Rf=+sw_fixed.value, m=+sw_m.value, T=+sw_T.value;
+      const zero=parseCSV(sw_zero.value);
+      const out=document.getElementById('sw_out');
+      if (N<=0||m<=0||T<=0||!zero.length){ out.innerHTML='<span class="warn">Enter N>0, m>0, T>0 and a valid zero curve.</span>'; return; }
+      const n=Math.round(m*T);
+      const per=1/m;
+
+      function spotAt(t){
+        for(let i=0;i<zero.length-1;i++){
+          const [t1,s1]=zero[i], [t2,s2]=zero[i+1];
+          if (t>=t1 && t<=t2){
+            const w=(t-t1)/(t2-t1);
+            return s1 + w*(s2-s1);
+          }
+        }
+        return zero[zero.length-1][1];
+      }
+      let ann=0;
+      for(let i=1;i<=n;i++){
+        const t=i*per;
+        const s=spotAt(t);
+        const df=exp(-s*t);
+        ann += df;
+      }
+      const DF_T = exp(-spotAt(T)*T);
+      const pvFixed = N * (Rf/m) * ann + N * DF_T;
+      const pvFloat = N; // at reset (par)
+      const valueReceiverFloat = pvFloat - pvFixed;
+      const parR = ( (pvFloat - N*DF_T) * m ) / (N*ann);
+      out.textContent=`PV fixed≈${pvFixed.toFixed(2)}; PV float≈${pvFloat.toFixed(2)}
+Value (receive float, pay fixed)≈${valueReceiverFloat.toFixed(2)}
+Par fixed rate≈${parR.toFixed(8)}`;
+    });
+    document.getElementById('sw_clear').addEventListener('click', ()=>{ sw_out.textContent=''; });
+
+    // Immunization
+    document.getElementById('im_calc').addEventListener('click', () => {
+      const cf=parseCSV(im_cf.value);
+      const zero=parseCSV(im_zero.value);
+      const h=+im_h.value, dybps=+im_dy.value;
+      const out=document.getElementById('im_out');
+      if (!cf.length || !zero.length || h<=0){ out.innerHTML='<span class="warn">Provide CFs, zero curve, and positive horizon.</span>'; return; }
+
+      function spotAt(t){
+        for(let i=0;i<zero.length-1;i++){
+          const [t1,s1]=zero[i], [t2,s2]=zero[i+1];
+          if (t>=t1 && t<=t2){
+            const w=(t-t1)/(t2-t1);
+            return s1 + w*(s2-s1);
+          }
+        }
+        return zero[zero.length-1][1];
+      }
+      let PV=0, wtdTime=0;
+      cf.forEach(([t,amt]) => {
+        const s=spotAt(t);
+        const df=exp(-s*t);
+        PV += amt*df;
+        wtdTime += t*amt*df;
+      });
+      const Dmac = wtdTime / PV;
+      const shift = dybps/10000;
+      let PVshift=0;
+      cf.forEach(([t,amt]) => {
+        const s=spotAt(t)+shift;
+        const df=exp(-s*t);
+        PVshift += amt*df;
+      });
+      const deltaPV = PVshift - PV;
+
+      const durationMatch = Math.abs(Dmac - h) < 0.05 ? 'OK (≈match)' : 'No (mismatch)';
+      out.textContent=`PV=${PV.toFixed(4)}; Macaulay duration≈${Dmac.toFixed(6)}y; Horizon=${h.toFixed(2)}y → Duration match: ${durationMatch}
+Parallel shift +${dybps} bps → ΔPV≈${deltaPV.toFixed(4)} (convexity benefits not explicitly shown)`;
+    });
+    document.getElementById('im_clear').addEventListener('click', ()=>{ im_out.textContent=''; });
+
+    // Callable bond & OAS (simplified short-rate lattice)
+    document.getElementById('co_calc').addEventListener('click', () => {
+      const par=+co_par.value, cPct=+co_c.value, m=+co_m.value, T=+co_T.value, u=+co_u.value, d=+co_d.value, r=+co_r.value, oas=+co_oas.value;
+      const callFrom=+co_callFrom.value, callPrice=+co_callPrice.value;
+      const out=document.getElementById('co_out');
+      const reasons=[];
+      if (par<=0||m<=0||T<=0) reasons.push('Par>0, m>0, T>0 required.');
+      if (u<=d) reasons.push('Up factor u must exceed down factor d.');
+      if (reasons.length){ out.innerHTML='<span class="warn">'+reasons.join(' ')+'</span>'; return; }
+      const n = Math.round(m*T);
+      const per = 1/m;
+      const coupon = par*(cPct/100)/m;
+      // Short rate per step with OAS add-on
+      const rs = r + oas;
+
+      // Build lattice of discount factors per node (assume recombining multiplicative for rates)
+      // For simplicity, use risk-neutral p from short-rate: p=(exp(rs*per)-d)/(u-d), clipped
+      let p = (Math.exp(rs*per) - d) / (u - d);
+      p = Math.min(Math.max(p, 0), 1);
+
+      // Terminal payoff includes principal at maturity
+      // Backward induction: value = (coupon + expected discounted next) with early call if callable
+      const levels = [];
+      // Initialize terminal values (at n): principal + coupon
+      levels[n] = new Array(n+1).fill(0);
+      for(let i=0;i<=n;i++){
+        levels[n][i] = par + coupon;
+      }
+      // Backward induction
+      for(let t=n-1; t>=0; t--){
+        levels[t] = new Array(t+1).fill(0);
+        const isCallable = ( (t+1)*per >= callFrom ); // callable at payment times from callFrom year
+        for(let i=0;i<=t;i++){
+          const disc = Math.exp(-rs*per);
+          const cont = disc * ( p*levels[t+1][i+1] + (1-p)*levels[t+1][i] ) + coupon;
+          let val = cont;
+          if (isCallable) {
+            val = Math.min(cont, callPrice); // issuer calls if continuation value > call price
+          }
+          levels[t][i] = val;
+        }
+      }
+      const price = levels[0][0];
+      out.textContent=`Callable price≈${price.toFixed(4)} (OAS add-on=${oas.toFixed(6)}, p≈${p.toFixed(6)})`;
+    });
+    document.getElementById('co_clear').addEventListener('click', ()=>{ co_out.textContent=''; });
+  </script>
+</body>
+</html>
